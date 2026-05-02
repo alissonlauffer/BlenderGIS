@@ -1,4 +1,5 @@
 import os
+import re
 import time
 import json
 import random
@@ -41,6 +42,9 @@ OSMTAGS = []
 
 closedWaysArePolygons = ['aeroway', 'amenity', 'boundary', 'building', 'craft', 'geological', 'historic', 'landuse', 'leisure', 'military', 'natural', 'office', 'place', 'shop' , 'sport', 'tourism']
 closedWaysAreExtruded = ['building']
+
+# Pre-compiled regex for parsing OSM height tags like "25", "25m", "3.5"
+_HEIGHT_RE = re.compile(r'^([\d.,]+)')
 
 
 def queryBuilder(bbox, tags=['building', 'highway'], types=['node', 'way', 'relation'], format='json'):
@@ -211,6 +215,7 @@ class OSM_IMPORT():
 
 		bmeshes = {}
 		vgroupsObj = {}
+		elev_cache = {}
 
 		#######
 		def seed(id, tags, pts):
@@ -236,16 +241,21 @@ class OSM_IMPORT():
 			dx, dy = geoscn.crsx, geoscn.crsy
 
 			if self.useElevObj:
-				#pts = [rayCaster.rayCast(v[0]-dx, v[1]-dy).loc for v in pts]
-				pts = [rayCaster.rayCast(v[0]-dx, v[1]-dy) for v in pts]
-				hits = [pt.hit for pt in pts]
+				# Use coordinate cache to avoid redundant raycasts for shared nodes
+				rc_hits = []
+				for v in pts:
+					key = (v[0], v[1])
+					if key not in elev_cache:
+						elev_cache[key] = rayCaster.rayCast(v[0]-dx, v[1]-dy)
+					rc_hits.append(elev_cache[key])
+				hits = [pt.hit for pt in rc_hits]
 				if not all(hits) and any(hits):
-					zs = [p.loc.z for p in pts if p.hit]
+					zs = [p.loc.z for p in rc_hits if p.hit]
 					meanZ = sum(zs) / len(zs)
-					for v in pts:
-						if not v.hit:
-							v.loc.z = meanZ
-				pts = [pt.loc for pt in pts]
+					for pt in rc_hits:
+						if not pt.hit:
+							pt.loc.z = meanZ
+				pts = [pt.loc for pt in rc_hits]
 			else:
 				pts = [ (v[0]-dx, v[1]-dy, 0) for v in pts]
 
@@ -268,21 +278,15 @@ class OSM_IMPORT():
 				if self.buildingsExtrusion and any(tag in closedWaysAreExtruded for tag in tags):
 					offset = None
 					if "height" in tags:
-							htag = tags["height"]
-							htag.replace(',', '.')
-							try:
-								offset = int(htag)
-							except:
+							htag = tags["height"].replace(',', '.')
+							match = _HEIGHT_RE.match(htag)
+							if match:
 								try:
-									offset = float(htag)
-								except:
-									for i, c in enumerate(htag):
-										if not c.isdigit():
-											try:
-												offset, unit = float(htag[:i]), htag[i:].strip()
-												#todo : parse unit  25, 25m, 25 ft, etc.
-											except:
-												offset = None
+									offset = float(match.group(1))
+								except ValueError:
+									offset = None
+							else:
+								offset = None
 					elif "building:levels" in tags:
 						try:
 							offset = int(tags["building:levels"]) * self.levelHeight
@@ -345,11 +349,11 @@ class OSM_IMPORT():
 				if any(tag in tagsList for tag in tags):
 					for k in tagsList:
 						if k in tags:
-							try:
-								tagCollec = layer.children[k]
-							except KeyError:
+							tagCollec = tag_collections.get(k)
+							if tagCollec is None:
 								tagCollec = bpy.data.collections.new(k)
 								layer.children.link(tagCollec)
+								tag_collections[k] = tagCollec
 							tagCollec.objects.link(obj)
 							break
 				else:
@@ -415,6 +419,8 @@ class OSM_IMPORT():
 		if self.separate:
 			layer = bpy.data.collections.new('OSM')
 			context.scene.collection.children.link(layer)
+			# Pre-build tag collection lookup to avoid repeated try/except in loop
+			tag_collections = {}
 
 		#Build mesh
 		waysNodesId = set(node.id for way in result.ways for node in way.nodes)
@@ -476,7 +482,7 @@ class OSM_IMPORT():
 				vgroups = vgroupsObj.get(name, None)
 				if vgroups is not None:
 					#for vgroupName, vgroupIdx in vgroups.items():
-					for vgroupName in sorted(vgroups.keys()):
+					for vgroupName in vgroups.keys():
 						vgroupIdx = vgroups[vgroupName]
 						g = obj.vertex_groups.new(name=vgroupName)
 						g.add(vgroupIdx, weight=1, type='ADD')

@@ -28,7 +28,7 @@ def mouseTo3d(context, x, y):
 class DropToGround():
 	'''A class to perform raycasting accross z axis'''
 
-	def __init__(self, scn, ground, method='OBJ'):
+	def __init__(self, scn, ground, method='BVH'):
 		self.method = method # 'BVH' or 'OBJ'
 		self.scn = scn
 		self.ground = ground

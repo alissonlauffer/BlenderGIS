@@ -208,7 +208,7 @@ class Reproj():
 			if HAS_GDAL:
 				self.iproj = 'GDAL'
 			elif HAS_PYPROJ:
-				 self.iproj = 'PYPROJ'
+				self.iproj = 'PYPROJ'
 			elif ((crs1.isWM or crs1.isUTM) and crs2.isWGS84) or (crs1.isWGS84 and (crs2.isWM or crs2.isUTM)):
 				self.iproj = 'BUILTIN'
 			else:
@@ -229,6 +229,7 @@ class Reproj():
 		elif self.iproj == 'PYPROJ':
 			self.crs1 = crs1.getPyProj()
 			self.crs2 = crs2.getPyProj()
+			self.transformer = pyproj.Transformer.from_proj(self.crs1, self.crs2)
 
 		elif self.iproj == 'EPSGIO':
 			self.mapTilerCoords = MapTilerCoordinates()
@@ -279,11 +280,10 @@ class Reproj():
 				ys, xs = zip(*pts)
 			else:
 				xs, ys = zip(*pts)
-			transformer = pyproj.Transformer.from_proj(self.crs1, self.crs2)
 			if self.crs2.crs.is_geographic:
-				ys, xs = transformer.transform(xs, ys)
+				ys, xs = self.transformer.transform(xs, ys)
 			else:
-				xs, ys = transformer.transform(xs, ys)
+				xs, ys = self.transformer.transform(xs, ys)
 			return list(zip(xs, ys))
 
 		elif self.iproj == 'EPSGIO':
