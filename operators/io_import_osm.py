@@ -91,13 +91,22 @@ def queryBuilder(bbox, tags=['building', 'highway'], types=['node', 'way', 'rela
 ########################
 def joinBmesh(src_bm, dest_bm):
 	'''
-	Hack to join a bmesh to another
-	TODO: replace this function by bmesh.ops.duplicate when 'dest' argument will be implemented
+	Directly copy geometry from src_bm into dest_bm.
+	Avoids the heavy overhead of creating intermediate Blender Mesh datablocks.
 	'''
-	buff = bpy.data.meshes.new(".temp")
-	src_bm.to_mesh(buff)
-	dest_bm.from_mesh(buff)
-	bpy.data.meshes.remove(buff)
+	vert_map = {}
+	for v in src_bm.verts:
+		vert_map[v] = dest_bm.verts.new(v.co)
+	for e in src_bm.edges:
+		try:
+			dest_bm.edges.new((vert_map[e.verts[0]], vert_map[e.verts[1]]))
+		except ValueError:
+			pass  # edge already exists
+	for f in src_bm.faces:
+		try:
+			dest_bm.faces.new([vert_map[v] for v in f.verts])
+		except ValueError:
+			pass  # face already exists
 
 
 
@@ -392,13 +401,9 @@ class OSM_IMPORT():
 					vgroup.extend(vidx)
 
 				if 'relation' in self.featureType:
-					for rel in result.relations:
-						name = rel.tags.get('name', str(rel.id))
-						for member in rel.members:
-							#todo: remove duplicate members
-							if id == member.ref:
-								vgroup = vgroups.setdefault('Relation:'+name, [])
-								vgroup.extend(vidx)
+					for rel_name in relation_members.get(id, []):
+						vgroup = vgroups.setdefault(rel_name, [])
+						vgroup.extend(vidx)
 
 
 
@@ -412,7 +417,15 @@ class OSM_IMPORT():
 			context.scene.collection.children.link(layer)
 
 		#Build mesh
-		waysNodesId = [node.id for way in result.ways for node in way.nodes]
+		waysNodesId = set(node.id for way in result.ways for node in way.nodes)
+
+		# Pre-build relation member lookup for efficient vertex group assignment
+		relation_members = {}
+		if 'relation' in self.featureType:
+			for rel in result.relations:
+				name = rel.tags.get('name', str(rel.id))
+				for member in rel.members:
+					relation_members.setdefault(member.ref, []).append('Relation:' + name)
 
 		if 'node' in self.featureType:
 
@@ -475,6 +488,15 @@ class OSM_IMPORT():
 			bpy.data.collections['OSM'].children.link(relations)
 			importedObjects = bpy.data.collections['OSM'].objects
 
+			# Build fast object lookup by OSM id
+			obj_by_id = {}
+			for obj in importedObjects:
+				try:
+					oid = int(obj['id'])
+					obj_by_id[oid] = obj
+				except:
+					pass
+
 			for rel in result.relations:
 
 				name = rel.tags.get('name', str(rel.id))
@@ -488,17 +510,12 @@ class OSM_IMPORT():
 
 					#todo: remove duplicate members
 
-					for obj in importedObjects:
-						#id = int(obj.get('id', -1))
+					obj = obj_by_id.get(member.ref)
+					if obj is not None:
 						try:
-							id = int(obj['id'])
-						except:
-							id = None
-						if id == member.ref:
-							try:
-								relation.objects.link(obj)
-							except Exception as e:
-								log.error('Object {} already in group {}'.format(obj.name, name), exc_info=True)
+							relation.objects.link(obj)
+						except Exception as e:
+							log.error('Object {} already in group {}'.format(obj.name, name), exc_info=True)
 
 				#cleanup
 				if not relation.objects:
