@@ -238,6 +238,11 @@ class IMPORTGIS_OT_ascii_grid(Operator, ImportHelper):
         if self.newlines:
             read = self.read_row_newlines
 
+        total_rows = math.ceil(nrows / step)
+        wm = context.window_manager
+        wm.progress_begin(0, total_rows)
+        row_idx = 0
+
         for y in range(nrows - 1, -1, -step):
             # spec doesn't require newline separated rows so make it handle a single line of all values
             coldata = read(f, ncols)
@@ -248,6 +253,9 @@ class IMPORTGIS_OT_ascii_grid(Operator, ImportHelper):
 
             for i in range(step - 1):
                 _ = read(f, ncols)
+
+            row_idx += 1
+            wm.progress_update(row_idx)
 
             for x in range(0, ncols, step):
                 # TODO: exclude nodata values (implications for face generation)
@@ -263,6 +271,8 @@ class IMPORTGIS_OT_ascii_grid(Operator, ImportHelper):
                         log.error('Value "{val}" in row {row}, column {col} could not be converted to a float.'.format(val=coldata[x], row=nrows-y, col=x))
                         self.report({'ERROR'}, 'Cannot convert value to float')
                         return {'CANCELLED'}
+
+        wm.progress_end()
 
         if self.importMode == 'MESH':
             step_ncols = math.ceil(ncols / step)

@@ -70,7 +70,7 @@ def _exportAsMesh(georaster, dx=0, dy=0, step=1, buildFaces=True, flat=False, su
 	return mesh
 
 
-def exportAsMesh(georaster, dx=0, dy=0, step=1, buildFaces=True, subset=False, reproj=None, flat=False):
+def exportAsMesh(georaster, dx=0, dy=0, step=1, buildFaces=True, subset=False, reproj=None, flat=False, wm=None):
 	if subset and georaster.subBoxGeo is None:
 		subset = False
 
@@ -93,6 +93,10 @@ def exportAsMesh(georaster, dx=0, dy=0, step=1, buildFaces=True, subset=False, r
 	faces = []
 	nodata = []
 	idxMap = {}
+	total_rows = math.ceil(h / step)
+	if wm is not None:
+		wm.progress_begin(0, total_rows)
+	row_idx = 0
 	for py in range(0, h, step):
 		for px in range(0, w, step):
 			x = x0 + (pxSizeX * px)
@@ -129,6 +133,12 @@ def exportAsMesh(georaster, dx=0, dy=0, step=1, buildFaces=True, subset=False, r
 					if not any(v in f for v in nodata): #TODO too slow ?
 						f = [idxMap[v] for v in f]
 						faces.append(f)
+		row_idx += 1
+		if wm is not None:
+			wm.progress_update(row_idx)
+
+	if wm is not None:
+		wm.progress_end()
 
 	mesh = bpy.data.meshes.new("DEM")
 	mesh.from_pydata(verts, [], faces)

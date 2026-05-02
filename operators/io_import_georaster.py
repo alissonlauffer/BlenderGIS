@@ -401,7 +401,7 @@ class IMPORTGIS_OT_georaster(Operator, ImportHelper):
 						dx, dy = rprjToScene.pt(dx, dy)
 					geoscn.setOriginPrj(dx, dy)
 				if self.subdivision == 'mesh':#Mesh cut
-					mesh = exportAsMesh(grid, dx, dy, self.step, reproj=rprjToScene, flat=True)
+					mesh = exportAsMesh(grid, dx, dy, self.step, reproj=rprjToScene, flat=True, wm=context.window_manager)
 				else:
 					mesh = rasterExtentToMesh(name, grid, dx, dy, pxLoc='CENTER', reproj=rprjToScene) #use pixel center to avoid displacement glitch
 				obj = placeObj(mesh, name)
@@ -456,7 +456,7 @@ class IMPORTGIS_OT_georaster(Operator, ImportHelper):
 				if rprj:
 					dx, dy = rprjToScene.pt(dx, dy)
 				geoscn.setOriginPrj(dx, dy)
-			mesh = exportAsMesh(grid, dx, dy, self.step, reproj=rprjToScene, subset=self.clip, flat=False, buildFaces=self.buildFaces)
+			mesh = exportAsMesh(grid, dx, dy, self.step, reproj=rprjToScene, subset=self.clip, flat=False, buildFaces=self.buildFaces, wm=context.window_manager)
 			obj = placeObj(mesh, name)
 			#grid.unload()
 

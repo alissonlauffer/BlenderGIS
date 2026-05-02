@@ -197,6 +197,8 @@ class OSM_IMPORT():
 		geoscn = GeoScene(scn)
 		scale = geoscn.scale #TODO
 
+		wm = context.window_manager
+
 		#Init reprojector class
 		try:
 			rprj = Reproj(4326, dstCRS)
@@ -286,7 +288,7 @@ class OSM_IMPORT():
 								except ValueError:
 									offset = None
 							else:
-								offset = None
+									offset = None
 					elif "building:levels" in tags:
 						try:
 							offset = int(tags["building:levels"]) * self.levelHeight
@@ -433,6 +435,19 @@ class OSM_IMPORT():
 				for member in rel.members:
 					relation_members.setdefault(member.ref, []).append('Relation:' + name)
 
+		# Compute total items for progress
+		total_items = 0
+		processed_items = 0
+		if 'node' in self.featureType:
+			total_items += len(result.nodes)
+		if 'way' in self.featureType:
+			total_items += len(result.ways)
+		if 'relation' in self.featureType:
+			total_items += len(result.relations)
+
+		if total_items > 0:
+			wm.progress_begin(0, total_items)
+
 		if 'node' in self.featureType:
 
 			for node in result.nodes:
@@ -441,13 +456,17 @@ class OSM_IMPORT():
 				extags = list(node.tags.keys()) + [k + '=' + v for k, v in node.tags.items()]
 
 				if node.id in waysNodesId:
+					processed_items += 1
 					continue
 
 				if self.filterTags and not any(tag in self.filterTags for tag in extags):
+					processed_items += 1
 					continue
 
 				pt = (float(node.lon), float(node.lat))
 				seed(node.id, node.tags, [pt])
+				processed_items += 1
+				wm.progress_update(processed_items)
 
 
 		if 'way' in self.featureType:
@@ -457,10 +476,13 @@ class OSM_IMPORT():
 				extags = list(way.tags.keys()) + [k + '=' + v for k, v in way.tags.items()]
 
 				if self.filterTags and not any(tag in self.filterTags for tag in extags):
+					processed_items += 1
 					continue
 
 				pts = [(float(node.lon), float(node.lat)) for node in way.nodes]
 				seed(way.id, way.tags, pts)
+				processed_items += 1
+				wm.progress_update(processed_items)
 
 
 
@@ -526,6 +548,12 @@ class OSM_IMPORT():
 				#cleanup
 				if not relation.objects:
 					bpy.data.collections.remove(relation)
+
+				processed_items += 1
+				wm.progress_update(processed_items)
+
+		if total_items > 0:
+			wm.progress_end()
 
 
 
